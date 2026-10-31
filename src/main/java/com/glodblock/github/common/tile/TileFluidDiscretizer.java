@@ -262,23 +262,34 @@ public class TileFluidDiscretizer extends AENetworkTile implements ICellContaine
         @Nullable
         @Override
         public IAEStack injectItems(IAEStack aeStack, Actionable type, IActionSource src) {
+            // IMEInventory.injectItems returns the unaccepted remainder.
+            // Returning null when forwarding was impossible would silently void the fluid.
             if (!(aeStack instanceof IAEFluidStack)) {
-                return null;
+                return aeStack;
             }
             IAEFluidStack input = (IAEFluidStack) aeStack;
+            IAEItemStack drops = FakeFluids.packFluid2AEDrops(input);
+            if (drops == null) {
+                return input;
+            }
+
             ICraftingGrid craftingGrid;
             try {
                 craftingGrid = getProxy().getGrid().getCache(ICraftingGrid.class);
             } catch (GridAccessException e) {
-                return null;
+                return input;
             }
-            if (craftingGrid instanceof CraftingGridCache) {
-                IAEItemStack remaining = ((CraftingGridCache)craftingGrid).injectItems(FakeFluids.packFluid2AEDrops(input), type, ownActionSource);
-                if (remaining != null) {
-                    return FakeItemRegister.getAEStack(remaining);
-                }
+            if (!(craftingGrid instanceof CraftingGridCache)) {
+                return input;
             }
-            return null;
+
+            IAEItemStack remaining = ((CraftingGridCache) craftingGrid).injectItems(drops, type, ownActionSource);
+            if (remaining == null) {
+                return null; // The crafting grid accepted the full amount.
+            }
+            IAEFluidStack fluidRemainder = FakeItemRegister.getAEStack(remaining);
+            // If the crafting grid returned an unrecognized remainder, do not claim success.
+            return fluidRemainder != null ? fluidRemainder : input;
         }
 
         @Nullable
